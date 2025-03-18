@@ -13,19 +13,29 @@ export async function POST(request: Request) {
     }
 
     //Überprüfe availability
-    const { data: availability, error: availabilityError } = await supabase
-        .from('availability')
-        .select('*')
-        .eq('restaurant_id', restaurant_id)
-        .eq('date', date)
-        .eq('time', time)
-        .single();
-    
-    if (availabilityError || !availability) {
+    const { data: available, error: checkError } = await supabase.rpc('check_availability', { 
+        date_param: date,
+        people_param: people,
+        restaurant_id_param: restaurant_id
+    });
+
+    const { error: setError } = await supabase.rpc('set_current_restaurant_id', {
+        p_restaurant_id: restaurant_id
+    });
+
+    if (checkError) {
         return NextResponse.json(
-            { error: 'Keine Verfügbarkeit gefunden' },
-            { status: 400 }
+          { error: checkError.message },
+          { status: 500 }
         );
+      }
+    
+    // Falls kein Zeitslot gefunden wurde, Fehler zurückgeben
+    if (!available.some((slot: {time : string}) => slot.time === time)) {
+    return NextResponse.json(
+        { error: "Der gewählte Zeitslot ist nicht mehr verfügbar" },
+        { status: 400 }
+    );
     }
 
     //erstellungen der Reservierung
@@ -41,13 +51,6 @@ export async function POST(request: Request) {
         })
         .select();
     
-    
-    
-    
-    const { error: setError } = await supabase.rpc('set_current_restaurant_id', {
-        p_restaurant_id: restaurant_id
-      });
-
     if (error) {
         return NextResponse.json(
             { error: error.message },
